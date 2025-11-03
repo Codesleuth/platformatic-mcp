@@ -1,5 +1,8 @@
 # Fastify MCP Server
 
+> [!WARNING]
+> This is a fork. Please refer to the original repository at [@platformatic/mcp](https://github.com/platformatic/mcp).
+
 A Fastify plugin that implements the Model Context Protocol (MCP) server using JSON-RPC 2.0. This plugin enables Fastify applications to expose tools, resources, and prompts following the MCP 2025-06-18 specification with full elicitation support.
 
 ## Installation
@@ -32,94 +35,121 @@ npm install @sinclair/typebox
 ## Quick Start
 
 ```typescript
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 // Or use named import:
 // import { mcpPlugin } from '@platformatic/mcp'
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 // Register the MCP plugin
 await app.register(mcpPlugin, {
   serverInfo: {
-    name: 'my-mcp-server',
-    version: '1.0.0'
+    name: "my-mcp-server",
+    version: "1.0.0",
   },
   capabilities: {
     tools: { listChanged: true },
     resources: { subscribe: true },
-    prompts: {}
+    prompts: {},
   },
-  instructions: 'This server provides custom tools and resources'
-})
+  instructions: "This server provides custom tools and resources",
+});
 
 // Add tools, resources, and prompts with handlers
-app.mcpAddTool({
-  name: 'calculator',
-  description: 'Performs basic arithmetic operations',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      operation: { type: 'string', enum: ['add', 'subtract', 'multiply', 'divide'] },
-      a: { type: 'number' },
-      b: { type: 'number' }
+app.mcpAddTool(
+  {
+    name: "calculator",
+    description: "Performs basic arithmetic operations",
+    inputSchema: {
+      type: "object",
+      properties: {
+        operation: {
+          type: "string",
+          enum: ["add", "subtract", "multiply", "divide"],
+        },
+        a: { type: "number" },
+        b: { type: "number" },
+      },
+      required: ["operation", "a", "b"],
     },
-    required: ['operation', 'a', 'b']
+  },
+  async (params) => {
+    const { operation, a, b } = params;
+    let result;
+    switch (operation) {
+      case "add":
+        result = a + b;
+        break;
+      case "subtract":
+        result = a - b;
+        break;
+      case "multiply":
+        result = a * b;
+        break;
+      case "divide":
+        result = a / b;
+        break;
+      default:
+        throw new Error("Invalid operation");
+    }
+    return {
+      content: [{ type: "text", text: `Result: ${result}` }],
+    };
   }
-}, async (params) => {
-  const { operation, a, b } = params
-  let result
-  switch (operation) {
-    case 'add': result = a + b; break
-    case 'subtract': result = a - b; break
-    case 'multiply': result = a * b; break
-    case 'divide': result = a / b; break
-    default: throw new Error('Invalid operation')
-  }
-  return {
-    content: [{ type: 'text', text: `Result: ${result}` }]
-  }
-})
+);
 
-app.mcpAddResource({
-  uri: 'file://config.json',
-  name: 'Application Config',
-  description: 'Server configuration file',
-  mimeType: 'application/json'
-}, async (uri, context) => {
-  // Read and return the configuration file
-  const config = { setting1: 'value1', setting2: 'value2' }
-  return {
-    contents: [{
-      uri,
-      text: JSON.stringify(config, null, 2),
-      mimeType: 'application/json'
-    }]
+app.mcpAddResource(
+  {
+    uri: "file://config.json",
+    name: "Application Config",
+    description: "Server configuration file",
+    mimeType: "application/json",
+  },
+  async (uri, context) => {
+    // Read and return the configuration file
+    const config = { setting1: "value1", setting2: "value2" };
+    return {
+      contents: [
+        {
+          uri,
+          text: JSON.stringify(config, null, 2),
+          mimeType: "application/json",
+        },
+      ],
+    };
   }
-})
+);
 
-app.mcpAddPrompt({
-  name: 'code-review',
-  description: 'Generates code review comments',
-  arguments: [{
-    name: 'language',
-    description: 'Programming language',
-    required: true
-  }]
-}, async (name, args, context) => {
-  const language = args?.language || 'javascript'
-  return {
-    messages: [{
-      role: 'user',
-      content: {
-        type: 'text',
-        text: `Please review this ${language} code for best practices, potential bugs, and improvements.`
-      }
-    }]
+app.mcpAddPrompt(
+  {
+    name: "code-review",
+    description: "Generates code review comments",
+    arguments: [
+      {
+        name: "language",
+        description: "Programming language",
+        required: true,
+      },
+    ],
+  },
+  async (name, args, context) => {
+    const language = args?.language || "javascript";
+    return {
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Please review this ${language} code for best practices, potential bugs, and improvements.`,
+          },
+        },
+      ],
+    };
   }
-})
+);
 
-await app.listen({ port: 3000 })
+await app.listen({ port: 3000 });
 ```
 
 ## Elicitation Support (MCP 2025-06-18)
@@ -129,98 +159,105 @@ The plugin supports the elicitation capability, allowing servers to request stru
 ### Basic Elicitation
 
 ```typescript
-import { Type } from '@sinclair/typebox'
+import { Type } from "@sinclair/typebox";
 
 // Register plugin with elicitation support
 await app.register(mcpPlugin, {
   enableSSE: true, // Required for elicitation
   capabilities: {
-    elicitation: {} // Enable elicitation capability
-  }
-})
+    elicitation: {}, // Enable elicitation capability
+  },
+});
 
 // In your tool handler, request information from the client
-app.mcpAddTool({
-  name: 'collect-user-info',
-  description: 'Collect user information',
-  inputSchema: Type.Object({})
-}, async (params, { sessionId }) => {
-  if (!sessionId) {
-    return { 
-      content: [{ type: 'text', text: 'No session available' }],
-      isError: true 
+app.mcpAddTool(
+  {
+    name: "collect-user-info",
+    description: "Collect user information",
+    inputSchema: Type.Object({}),
+  },
+  async (params, { sessionId }) => {
+    if (!sessionId) {
+      return {
+        content: [{ type: "text", text: "No session available" }],
+        isError: true,
+      };
     }
-  }
 
-  // Request user details with schema validation
-  const success = await app.mcpElicit(sessionId, 'Please enter your details', {
-    type: 'object',
-    properties: {
-      name: { 
-        type: 'string', 
-        description: 'Your full name',
-        minLength: 1,
-        maxLength: 100
-      },
-      email: {
-        type: 'string',
-        description: 'Your email address',
-        format: 'email'
-      },
-      age: {
-        type: 'integer',
-        description: 'Your age',
-        minimum: 0,
-        maximum: 150
-      },
-      preferences: {
-        type: 'array',
-        items: {
-          type: 'string',
-          enum: ['newsletter', 'updates', 'marketing']
+    // Request user details with schema validation
+    const success = await app.mcpElicit(
+      sessionId,
+      "Please enter your details",
+      {
+        type: "object",
+        properties: {
+          name: {
+            type: "string",
+            description: "Your full name",
+            minLength: 1,
+            maxLength: 100,
+          },
+          email: {
+            type: "string",
+            description: "Your email address",
+            format: "email",
+          },
+          age: {
+            type: "integer",
+            description: "Your age",
+            minimum: 0,
+            maximum: 150,
+          },
+          preferences: {
+            type: "array",
+            items: {
+              type: "string",
+              enum: ["newsletter", "updates", "marketing"],
+            },
+            description: "Communication preferences",
+          },
         },
-        description: 'Communication preferences'
+        required: ["name", "email"],
       }
-    },
-    required: ['name', 'email']
-  })
+    );
 
-  if (success) {
-    return { 
-      content: [{ type: 'text', text: 'Information request sent to client' }] 
-    }
-  } else {
-    return { 
-      content: [{ type: 'text', text: 'Failed to send elicitation request' }],
-      isError: true 
+    if (success) {
+      return {
+        content: [{ type: "text", text: "Information request sent to client" }],
+      };
+    } else {
+      return {
+        content: [{ type: "text", text: "Failed to send elicitation request" }],
+        isError: true,
+      };
     }
   }
-})
+);
 ```
 
 ### Advanced Elicitation with Custom Request IDs
 
 ```typescript
 // Request with custom ID for tracking
-const requestId = 'user-profile-123'
+const requestId = "user-profile-123";
 const success = await app.mcpElicit(
-  sessionId, 
-  'Complete your profile setup',
+  sessionId,
+  "Complete your profile setup",
   {
-    type: 'object',
+    type: "object",
     properties: {
-      avatar: { type: 'string', description: 'Avatar URL' },
-      bio: { type: 'string', maxLength: 500, description: 'Short bio' },
+      avatar: { type: "string", description: "Avatar URL" },
+      bio: { type: "string", maxLength: 500, description: "Short bio" },
       skills: {
-        type: 'array',
-        items: { type: 'string' },
+        type: "array",
+        items: { type: "string" },
         maxItems: 10,
-        description: 'Your skills'
-      }
-    }
+        description: "Your skills",
+      },
+    },
   },
   requestId
-)
+);
 ```
 
 ### Security Considerations for Elicitation
@@ -248,45 +285,56 @@ The plugin supports TypeBox schemas for type-safe validation with automatic Type
 ### Basic Usage
 
 ```typescript
-import { Type } from '@sinclair/typebox'
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import { Type } from "@sinclair/typebox";
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 await app.register(mcpPlugin, {
-  serverInfo: { name: 'my-server', version: '1.0.0' },
-  capabilities: { tools: {} }
-})
+  serverInfo: { name: "my-server", version: "1.0.0" },
+  capabilities: { tools: {} },
+});
 
 // Define TypeBox schema
 const SearchToolSchema = Type.Object({
-  query: Type.String({ minLength: 1, description: 'Search query' }),
-  limit: Type.Optional(Type.Number({ minimum: 1, maximum: 100, description: 'Maximum results' })),
-  filters: Type.Optional(Type.Array(Type.String(), { description: 'Filter criteria' }))
-})
+  query: Type.String({ minLength: 1, description: "Search query" }),
+  limit: Type.Optional(
+    Type.Number({ minimum: 1, maximum: 100, description: "Maximum results" })
+  ),
+  filters: Type.Optional(
+    Type.Array(Type.String(), { description: "Filter criteria" })
+  ),
+});
 
 // Register tool with TypeBox schema
-app.mcpAddTool({
-  name: 'search',
-  description: 'Search for files',
-  inputSchema: SearchToolSchema
-}, async (params) => {
-  // params is automatically typed as:
-  // {
-  //   query: string;
-  //   limit?: number;
-  //   filters?: string[];
-  // }
-  const { query, limit = 10, filters = [] } = params
-  
-  return {
-    content: [{
-      type: 'text',
-      text: `Searching for "${query}" with limit ${limit} and filters: ${filters.join(', ')}`
-    }]
+app.mcpAddTool(
+  {
+    name: "search",
+    description: "Search for files",
+    inputSchema: SearchToolSchema,
+  },
+  async (params) => {
+    // params is automatically typed as:
+    // {
+    //   query: string;
+    //   limit?: number;
+    //   filters?: string[];
+    // }
+    const { query, limit = 10, filters = [] } = params;
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Searching for "${query}" with limit ${limit} and filters: ${filters.join(
+            ", "
+          )}`,
+        },
+      ],
+    };
   }
-})
+);
 ```
 
 ### Schema Types
@@ -298,28 +346,33 @@ app.mcpAddTool({
 const ComplexToolSchema = Type.Object({
   user: Type.Object({
     name: Type.String(),
-    age: Type.Number({ minimum: 0 })
+    age: Type.Number({ minimum: 0 }),
   }),
   preferences: Type.Object({
     theme: Type.Union([
-      Type.Literal('light'),
-      Type.Literal('dark'),
-      Type.Literal('auto')
+      Type.Literal("light"),
+      Type.Literal("dark"),
+      Type.Literal("auto"),
     ]),
-    notifications: Type.Boolean()
+    notifications: Type.Boolean(),
   }),
-  tags: Type.Array(Type.String())
-})
+  tags: Type.Array(Type.String()),
+});
 
-app.mcpAddTool({
-  name: 'update-profile',
-  description: 'Update user profile',
-  inputSchema: ComplexToolSchema
-}, async (params) => {
-  // Fully typed nested object
-  const { user, preferences, tags } = params
-  return { content: [{ type: 'text', text: `Updated profile for ${user.name}` }] }
-})
+app.mcpAddTool(
+  {
+    name: "update-profile",
+    description: "Update user profile",
+    inputSchema: ComplexToolSchema,
+  },
+  async (params) => {
+    // Fully typed nested object
+    const { user, preferences, tags } = params;
+    return {
+      content: [{ type: "text", text: `Updated profile for ${user.name}` }],
+    };
+  }
+);
 ```
 
 #### Resource URI Schemas
@@ -327,22 +380,25 @@ app.mcpAddTool({
 ```typescript
 // URI validation schema
 const FileUriSchema = Type.String({
-  pattern: '^file://.+',
-  description: 'File URI pattern'
-})
+  pattern: "^file://.+",
+  description: "File URI pattern",
+});
 
-app.mcpAddResource({
-  uriPattern: 'file://documents/*',
-  name: 'Document Files',
-  description: 'Access document files',
-  uriSchema: FileUriSchema
-}, async (uri, context) => {
-  // uri is validated against the schema
-  const content = await readFile(uri)
-  return {
-    contents: [{ uri, text: content, mimeType: 'text/plain' }]
+app.mcpAddResource(
+  {
+    uriPattern: "file://documents/*",
+    name: "Document Files",
+    description: "Access document files",
+    uriSchema: FileUriSchema,
+  },
+  async (uri, context) => {
+    // uri is validated against the schema
+    const content = await readFile(uri);
+    return {
+      contents: [{ uri, text: content, mimeType: "text/plain" }],
+    };
   }
-})
+);
 ```
 
 #### Prompt Argument Schemas
@@ -350,35 +406,46 @@ app.mcpAddResource({
 ```typescript
 // Prompt with automatic argument generation
 const CodeReviewSchema = Type.Object({
-  language: Type.Union([
-    Type.Literal('javascript'),
-    Type.Literal('typescript'),
-    Type.Literal('python')
-  ], { description: 'Programming language' }),
-  complexity: Type.Optional(Type.Union([
-    Type.Literal('low'),
-    Type.Literal('medium'),
-    Type.Literal('high')
-  ], { description: 'Code complexity level' }))
-})
+  language: Type.Union(
+    [
+      Type.Literal("javascript"),
+      Type.Literal("typescript"),
+      Type.Literal("python"),
+    ],
+    { description: "Programming language" }
+  ),
+  complexity: Type.Optional(
+    Type.Union(
+      [Type.Literal("low"), Type.Literal("medium"), Type.Literal("high")],
+      { description: "Code complexity level" }
+    )
+  ),
+});
 
-app.mcpAddPrompt({
-  name: 'code-review',
-  description: 'Generate code review',
-  argumentSchema: CodeReviewSchema
-  // arguments array is automatically generated from schema
-}, async (name, args, context) => {
-  // args is typed as: { language: 'javascript' | 'typescript' | 'python', complexity?: 'low' | 'medium' | 'high' }
-  return {
-    messages: [{
-      role: 'user',
-      content: {
-        type: 'text',
-        text: `Review this ${args.language} code with ${args.complexity || 'medium'} complexity`
-      }
-    }]
+app.mcpAddPrompt(
+  {
+    name: "code-review",
+    description: "Generate code review",
+    argumentSchema: CodeReviewSchema,
+    // arguments array is automatically generated from schema
+  },
+  async (name, args, context) => {
+    // args is typed as: { language: 'javascript' | 'typescript' | 'python', complexity?: 'low' | 'medium' | 'high' }
+    return {
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Review this ${args.language} code with ${
+              args.complexity || "medium"
+            } complexity`,
+          },
+        },
+      ],
+    };
   }
-})
+);
 ```
 
 ### Error Handling
@@ -406,28 +473,34 @@ The plugin maintains backward compatibility with JSON Schema and unvalidated too
 
 ```typescript
 // JSON Schema (still supported)
-app.mcpAddTool({
-  name: 'legacy-tool',
-  description: 'Uses JSON Schema',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      param: { type: 'string' }
-    }
+app.mcpAddTool(
+  {
+    name: "legacy-tool",
+    description: "Uses JSON Schema",
+    inputSchema: {
+      type: "object",
+      properties: {
+        param: { type: "string" },
+      },
+    },
+  },
+  async (params) => {
+    // params is typed as 'any'
+    return { content: [{ type: "text", text: "OK" }] };
   }
-}, async (params) => {
-  // params is typed as 'any'
-  return { content: [{ type: 'text', text: 'OK' }] }
-})
+);
 
 // Unvalidated tool (unsafe)
-app.mcpAddTool({
-  name: 'unsafe-tool',
-  description: 'No validation'
-}, async (params) => {
-  // params is typed as 'any' - no validation performed
-  return { content: [{ type: 'text', text: 'OK' }] }
-})
+app.mcpAddTool(
+  {
+    name: "unsafe-tool",
+    description: "No validation",
+  },
+  async (params) => {
+    // params is typed as 'any' - no validation performed
+    return { content: [{ type: "text", text: "OK" }] };
+  }
+);
 ```
 
 ### Performance
@@ -449,7 +522,7 @@ This plugin supports the MCP Streamable HTTP transport specification, enabling b
 await app.register(mcpPlugin, {
   enableSSE: true, // Enable SSE support (default: false)
   // ... other options
-})
+});
 ```
 
 ## Redis Configuration for Horizontal Scaling
@@ -459,13 +532,15 @@ The plugin supports Redis-backed session management and message broadcasting for
 ### Why Redis is Critical for Scalability
 
 **Without Redis (Memory-only):**
+
 - Each server instance maintains isolated session stores
-- SSE connections are tied to specific server instances  
+- SSE connections are tied to specific server instances
 - No cross-instance message broadcasting
 - Session data is lost when servers restart
 - Load balancers can't route clients to different instances
 
 **With Redis (Distributed):**
+
 - **Shared Session State**: All instances access the same session data from Redis
 - **Cross-Instance Broadcasting**: Messages sent from any instance reach all connected clients
 - **Session Persistence**: Sessions survive server restarts with 1-hour TTL
@@ -477,27 +552,27 @@ This transforms the plugin from a single-instance application into a distributed
 ### Redis Setup
 
 ```typescript
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 await app.register(mcpPlugin, {
   enableSSE: true,
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    db: parseInt(process.env.REDIS_DB || '0'),
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6379"),
+    db: parseInt(process.env.REDIS_DB || "0"),
     password: process.env.REDIS_PASSWORD,
     // Additional ioredis options
     retryDelayOnFailover: 100,
-    maxRetriesPerRequest: 3
+    maxRetriesPerRequest: 3,
   },
   serverInfo: {
-    name: 'scalable-mcp-server',
-    version: '1.0.0'
-  }
-})
+    name: "scalable-mcp-server",
+    version: "1.0.0",
+  },
+});
 ```
 
 ### Multi-Instance Deployment
@@ -508,7 +583,7 @@ With Redis configuration, you can run multiple instances of your MCP server:
 # Instance 1
 PORT=3000 REDIS_HOST=redis.example.com node server.js
 
-# Instance 2  
+# Instance 2
 PORT=3001 REDIS_HOST=redis.example.com node server.js
 
 # Instance 3
@@ -518,36 +593,39 @@ PORT=3002 REDIS_HOST=redis.example.com node server.js
 ### Session Persistence Features
 
 **Automatic Session Management:**
+
 - Sessions persist across server restarts
 - 1-hour session TTL with automatic cleanup
 - Message history stored in Redis Streams
 
 **Message Replay:**
+
 ```javascript
 // Client reconnection with Last-Event-ID
-const eventSource = new EventSource('/mcp', {
-  headers: { 
-    'Accept': 'text/event-stream',
-    'Last-Event-ID': '1234' // Resume from this event
-  }
-})
+const eventSource = new EventSource("/mcp", {
+  headers: {
+    Accept: "text/event-stream",
+    "Last-Event-ID": "1234", // Resume from this event
+  },
+});
 ```
 
 **Cross-Instance Broadcasting:**
+
 ```typescript
 // Any server instance can broadcast to all connected clients
 app.mcpBroadcastNotification({
-  jsonrpc: '2.0',
-  method: 'notifications/message',
-  params: { message: 'Global update from instance 2' }
-})
+  jsonrpc: "2.0",
+  method: "notifications/message",
+  params: { message: "Global update from instance 2" },
+});
 
 // Send to specific session (works across instances)
-app.mcpSendToSession('session-xyz', {
-  jsonrpc: '2.0',
-  method: 'notifications/progress',
-  params: { progress: 75 }
-})
+app.mcpSendToSession("session-xyz", {
+  jsonrpc: "2.0",
+  method: "notifications/progress",
+  params: { progress: 75 },
+});
 ```
 
 ### Implementation Design Decisions
@@ -585,30 +663,30 @@ sequenceDiagram
     participant Broker as Message Broker
 
     Note over C1,Broker: Session Creation and Multiple Connection Support
-    
+
     C1->>Server: POST /mcp (initialize)
     Server->>C1: Response + Session ID: abc123
-    
+
     C1->>Server: GET /mcp (SSE stream)
     Note right of C1: Accept: text/event-stream<br/>mcp-session-id: abc123
     Server-->>C1: SSE connection established
-    
+
     Note over Tool,Broker: Tool Joins SAME Session (Implementation Choice)
-    
+
     Tool->>Server: POST /mcp (any request)
     Note right of Tool: mcp-session-id: abc123<br/>(reuses existing session)
     Server->>Tool: Response (no new session created)
-    
+
     Tool->>Server: GET /mcp (SSE stream)
     Note right of Tool: Accept: text/event-stream<br/>mcp-session-id: abc123
     Server-->>Tool: SSE connection established
-    
+
     rect rgb(255, 240, 240)
         Note over Server: Implementation Detail:<br/>localStreams.get('abc123') = Set{C1, Tool}<br/>Multiple connections share same session
     end
-    
+
     Note over C1,Broker: Session-Specific Broadcasting (Implementation Choice)
-    
+
     rect rgb(240, 248, 255)
         Note over C1,Tool: Our Implementation: mcpSendToSession('abc123')<br/>broadcasts to ALL connections in session abc123<br/>(Differs from MCP spec for scalability)
         Server->>Broker: mcpSendToSession('abc123', message)
@@ -622,16 +700,16 @@ sequenceDiagram
         Server-->>C1: SSE notification (shared session)
         Server-->>Tool: SSE notification (shared session)
     end
-    
+
     Note over C1,Broker: Reconnection Resilience
-    
+
     Tool->>Server: Disconnect (network issue)
     Note over Server: Session abc123 persists with C1 still connected
-    
+
     Server->>Broker: mcpSendToSession('abc123', message)
     Broker-->>Server: Deliver to remaining connections
     Server-->>C1: SSE notification continues
-    
+
     Tool->>Server: GET /mcp (reconnect)
     Note right of Tool: mcp-session-id: abc123<br/>Last-Event-ID: 15
     alt Redis Mode
@@ -642,9 +720,9 @@ sequenceDiagram
     end
     Server-->>Tool: Replay missed events
     Server-->>Tool: Resume receiving notifications
-    
+
     Note over C1,Broker: Cross-Instance Scalability
-    
+
     rect rgb(240, 255, 240)
         Note over Server,Redis: With Redis: Session abc123 can be accessed<br/>from any server instance. Messages route<br/>to the instance hosting the SSE connections.
         Server->>Broker: mcpSendToSession('abc123', message)<br/>(from any instance)
@@ -662,20 +740,20 @@ Handles all standard MCP protocol requests and returns JSON responses:
 
 ```javascript
 // Regular MCP request (always returns JSON)
-const response = await fetch('/mcp', {
-  method: 'POST',
+const response = await fetch("/mcp", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
-  body: JSON.stringify({ 
-    jsonrpc: '2.0', 
-    method: 'tools/call',
-    params: { name: 'my-tool', arguments: {} },
-    id: 1 
-  })
-})
-const result = await response.json()
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: { name: "my-tool", arguments: {} },
+    id: 1,
+  }),
+});
+const result = await response.json();
 ```
 
 #### GET `/mcp` - SSE Stream Establishment
@@ -684,66 +762,66 @@ Establishes long-lived Server-Sent Events streams for real-time communication:
 
 ```javascript
 // Establish SSE stream (separate from protocol requests)
-const eventSource = new EventSource('/mcp', {
-  headers: { 
-    'Accept': 'text/event-stream',
-    'mcp-session-id': sessionId  // Use session from POST request
-  }
-})
+const eventSource = new EventSource("/mcp", {
+  headers: {
+    Accept: "text/event-stream",
+    "mcp-session-id": sessionId, // Use session from POST request
+  },
+});
 
 eventSource.onmessage = (event) => {
-  const message = JSON.parse(event.data)
-  console.log('Server notification:', message)
-}
+  const message = JSON.parse(event.data);
+  console.log("Server notification:", message);
+};
 ```
 
 #### Complete Workflow Example
 
 ```javascript
 // 1. Create session and make MCP requests via POST
-const initResponse = await fetch('/mcp', {
-  method: 'POST',
+const initResponse = await fetch("/mcp", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
   body: JSON.stringify({
-    jsonrpc: '2.0',
-    method: 'initialize',
+    jsonrpc: "2.0",
+    method: "initialize",
     params: {
-      protocolVersion: '2025-06-18',
+      protocolVersion: "2025-06-18",
       capabilities: {},
-      clientInfo: { name: 'my-client', version: '1.0.0' }
+      clientInfo: { name: "my-client", version: "1.0.0" },
     },
-    id: 1
-  })
-})
+    id: 1,
+  }),
+});
 
-const sessionId = initResponse.headers.get('mcp-session-id')
+const sessionId = initResponse.headers.get("mcp-session-id");
 
 // 2. Establish SSE stream for notifications via GET
-const eventSource = new EventSource('/mcp', {
+const eventSource = new EventSource("/mcp", {
   headers: {
-    'Accept': 'text/event-stream',
-    'mcp-session-id': sessionId
-  }
-})
+    Accept: "text/event-stream",
+    "mcp-session-id": sessionId,
+  },
+});
 
 // 3. Continue making MCP requests via POST
-const toolResponse = await fetch('/mcp', {
-  method: 'POST',
+const toolResponse = await fetch("/mcp", {
+  method: "POST",
   headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-    'mcp-session-id': sessionId
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "mcp-session-id": sessionId,
   },
   body: JSON.stringify({
-    jsonrpc: '2.0',
-    method: 'tools/call',
-    params: { name: 'my-tool', arguments: {} },
-    id: 2
-  })
-})
+    jsonrpc: "2.0",
+    method: "tools/call",
+    params: { name: "my-tool", arguments: {} },
+    id: 2,
+  }),
+});
 
 // Server can send notifications via the SSE stream
 // while client makes requests via POST
@@ -754,66 +832,66 @@ const toolResponse = await fetch('/mcp', {
 The plugin provides methods to send notifications and messages to connected SSE clients:
 
 ```typescript
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 await app.register(mcpPlugin, {
   enableSSE: true,
   // ... other options
-})
+});
 
 // Broadcast a notification to all connected SSE clients
 app.mcpBroadcastNotification({
-  jsonrpc: '2.0',
-  method: 'notifications/message',
+  jsonrpc: "2.0",
+  method: "notifications/message",
   params: {
-    level: 'info',
-    message: 'Server status update'
-  }
-})
+    level: "info",
+    message: "Server status update",
+  },
+});
 
 // Send a message to a specific session
-const success = app.mcpSendToSession('session-id', {
-  jsonrpc: '2.0',
-  method: 'notifications/progress',
+const success = app.mcpSendToSession("session-id", {
+  jsonrpc: "2.0",
+  method: "notifications/progress",
   params: {
-    progressToken: 'task-123',
+    progressToken: "task-123",
     progress: 50,
-    total: 100
-  }
-})
+    total: 100,
+  },
+});
 
 // Send a request to a specific session (expecting a response)
-app.mcpSendToSession('session-id', {
-  jsonrpc: '2.0',
-  id: 'req-456',
-  method: 'sampling/createMessage',
+app.mcpSendToSession("session-id", {
+  jsonrpc: "2.0",
+  id: "req-456",
+  method: "sampling/createMessage",
   params: {
     messages: [
       {
-        role: 'user',
-        content: { type: 'text', text: 'Hello from server!' }
-      }
-    ]
-  }
-})
+        role: "user",
+        content: { type: "text", text: "Hello from server!" },
+      },
+    ],
+  },
+});
 
 // Example: Broadcast tool list changes
 app.mcpBroadcastNotification({
-  jsonrpc: '2.0',
-  method: 'notifications/tools/list_changed'
-})
+  jsonrpc: "2.0",
+  method: "notifications/tools/list_changed",
+});
 
 // Example: Send resource updates
 app.mcpBroadcastNotification({
-  jsonrpc: '2.0',
-  method: 'notifications/resources/updated',
+  jsonrpc: "2.0",
+  method: "notifications/resources/updated",
   params: {
-    uri: 'file://config.json'
-  }
-})
+    uri: "file://config.json",
+  },
+});
 ```
 
 ### Real-time Updates Example
@@ -822,21 +900,21 @@ app.mcpBroadcastNotification({
 // Set up a timer to send periodic updates
 setInterval(() => {
   app.mcpBroadcastNotification({
-    jsonrpc: '2.0',
-    method: 'notifications/message',
+    jsonrpc: "2.0",
+    method: "notifications/message",
     params: {
-      level: 'info',
-      message: `Server time: ${new Date().toISOString()}`
-    }
-  })
-}, 30000) // Every 30 seconds
+      level: "info",
+      message: `Server time: ${new Date().toISOString()}`,
+    },
+  });
+}, 30000); // Every 30 seconds
 
 // Send updates when data changes
 function onDataChange(newData: any) {
   app.mcpBroadcastNotification({
-    jsonrpc: '2.0',
-    method: 'notifications/resources/list_changed'
-  })
+    jsonrpc: "2.0",
+    method: "notifications/resources/list_changed",
+  });
 }
 ```
 
@@ -855,51 +933,56 @@ The plugin includes a built-in stdio transport utility for MCP communication ove
 ### Quick Start
 
 ```typescript
-import fastify from 'fastify'
-import mcpPlugin, { runStdioServer } from '@platformatic/mcp'
+import fastify from "fastify";
+import mcpPlugin, { runStdioServer } from "@platformatic/mcp";
 
 const app = fastify({
-  logger: false // Disable HTTP logging to avoid interference with stdio
-})
+  logger: false, // Disable HTTP logging to avoid interference with stdio
+});
 
 await app.register(mcpPlugin, {
   serverInfo: {
-    name: 'my-mcp-server',
-    version: '1.0.0'
+    name: "my-mcp-server",
+    version: "1.0.0",
   },
   capabilities: {
     tools: {},
     resources: {},
-    prompts: {}
-  }
-})
+    prompts: {},
+  },
+});
 
 // Register your tools, resources, and prompts
-app.mcpAddTool({
-  name: 'echo',
-  description: 'Echo back the input text',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      text: { type: 'string' }
+app.mcpAddTool(
+  {
+    name: "echo",
+    description: "Echo back the input text",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string" },
+      },
+      required: ["text"],
     },
-    required: ['text']
+  },
+  async (args) => {
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Echo: ${args.text}`,
+        },
+      ],
+    };
   }
-}, async (args) => {
-  return {
-    content: [{
-      type: 'text',
-      text: `Echo: ${args.text}`
-    }]
-  }
-})
+);
 
-await app.ready()
+await app.ready();
 
 // Start the stdio transport
 await runStdioServer(app, {
-  debug: process.env.DEBUG === 'true'
-})
+  debug: process.env.DEBUG === "true",
+});
 ```
 
 ### Usage Examples
@@ -925,10 +1008,12 @@ echo '{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"echo","arg
 Starts a Fastify MCP server in stdio mode.
 
 **Parameters:**
+
 - `app` - Fastify instance with MCP plugin registered
 - `options` - Optional stdio transport options
 
 **Options:**
+
 - `debug` - Enable debug logging to stderr (default: false)
 - `input` - Custom input stream (default: process.stdin)
 - `output` - Custom output stream (default: process.stdout)
@@ -939,6 +1024,7 @@ Starts a Fastify MCP server in stdio mode.
 Creates a stdio transport instance without starting it.
 
 **Parameters:**
+
 - `app` - Fastify instance with MCP plugin registered
 - `options` - Optional stdio transport options
 
@@ -992,48 +1078,48 @@ The plugin includes comprehensive OAuth 2.1 authorization support for secure MCP
 ### Quick OAuth Setup
 
 ```typescript
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 await app.register(mcpPlugin, {
   serverInfo: {
-    name: 'secure-mcp-server',
-    version: '1.0.0'
+    name: "secure-mcp-server",
+    version: "1.0.0",
   },
   capabilities: {
     tools: {},
     resources: {},
-    prompts: {}
+    prompts: {},
   },
   enableSSE: true, // Required for session-based authorization
   // Enable OAuth 2.1 authorization
   authorization: {
     enabled: true,
-    authorizationServers: ['https://auth.example.com'],
-    resourceUri: 'https://mcp.example.com',
+    authorizationServers: ["https://auth.example.com"],
+    resourceUri: "https://mcp.example.com",
     // JWT Token Validation
     tokenValidation: {
-      jwksUri: 'https://auth.example.com/.well-known/jwks.json',
-      validateAudience: true
+      jwksUri: "https://auth.example.com/.well-known/jwks.json",
+      validateAudience: true,
     },
     // OAuth 2.1 Client Configuration
     oauth2Client: {
       clientId: process.env.OAUTH_CLIENT_ID,
       clientSecret: process.env.OAUTH_CLIENT_SECRET,
-      authorizationServer: 'https://auth.example.com',
-      scopes: ['read', 'write']
-    }
+      authorizationServer: "https://auth.example.com",
+      scopes: ["read", "write"],
+    },
   },
   // Redis for session persistence (recommended)
   redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379')
-  }
-})
+    host: process.env.REDIS_HOST || "localhost",
+    port: parseInt(process.env.REDIS_PORT || "6379"),
+  },
+});
 
-await app.listen({ port: 3000 })
+await app.listen({ port: 3000 });
 ```
 
 ### Authorization Workflow
@@ -1042,55 +1128,57 @@ await app.listen({ port: 3000 })
 
 ```typescript
 // Start OAuth authorization
-const authResponse = await fetch('/oauth/authorize?redirect_uri=https://yourapp.com/dashboard')
+const authResponse = await fetch(
+  "/oauth/authorize?redirect_uri=https://yourapp.com/dashboard"
+);
 
 // Handle callback with authorization code
-const tokenResponse = await fetch('/oauth/callback', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+const tokenResponse = await fetch("/oauth/callback", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    code: 'auth_code_from_callback',
-    state: 'csrf_state_token'
-  })
-})
+    code: "auth_code_from_callback",
+    state: "csrf_state_token",
+  }),
+});
 
-const { access_token, refresh_token } = await tokenResponse.json()
+const { access_token, refresh_token } = await tokenResponse.json();
 ```
 
 #### 2. Authenticated MCP Requests
 
 ```typescript
 // Use access token for MCP requests
-const mcpResponse = await fetch('/mcp', {
-  method: 'POST',
+const mcpResponse = await fetch("/mcp", {
+  method: "POST",
   headers: {
-    'Authorization': `Bearer ${access_token}`,
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    Authorization: `Bearer ${access_token}`,
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
   body: JSON.stringify({
-    jsonrpc: '2.0',
-    method: 'tools/list',
-    id: 1
-  })
-})
+    jsonrpc: "2.0",
+    method: "tools/list",
+    id: 1,
+  }),
+});
 ```
 
 #### 3. Session-Based SSE Connections
 
 ```typescript
 // SSE connection with authorization
-const eventSource = new EventSource('/mcp', {
+const eventSource = new EventSource("/mcp", {
   headers: {
-    'Authorization': `Bearer ${access_token}`,
-    'Accept': 'text/event-stream'
-  }
-})
+    Authorization: `Bearer ${access_token}`,
+    Accept: "text/event-stream",
+  },
+});
 
 eventSource.onmessage = (event) => {
-  const message = JSON.parse(event.data)
-  console.log('Received:', message)
-}
+  const message = JSON.parse(event.data);
+  console.log("Received:", message);
+};
 
 // Server can send user-specific messages
 // app.mcpSendToUser(userId, notification)
@@ -1106,7 +1194,7 @@ authorization: {
   tokenValidation: {
     // JWKS endpoint for public key retrieval
     jwksUri: 'https://auth.example.com/.well-known/jwks.json',
-    
+
     // Validate token audience
     validateAudience: true
   }
@@ -1135,13 +1223,13 @@ authorization: {
   oauth2Client: {
     clientId: process.env.OAUTH_CLIENT_ID,
     clientSecret: process.env.OAUTH_CLIENT_SECRET,
-    
+
     // Authorization server
     authorizationServer: 'https://auth.example.com',
-    
+
     // Application configuration
     scopes: ['read', 'write', 'admin'],
-    
+
     // Optional: Dynamic client registration
     dynamicRegistration: true
   }
@@ -1155,21 +1243,21 @@ The plugin maps OAuth tokens to MCP sessions for efficient authorization:
 ```typescript
 // Authorization context automatically added to sessions
 interface SessionMetadata {
-  id: string
+  id: string;
   authorization?: {
-    userId: string
-    clientId: string
-    scopes: string[]
-    tokenHash: string // Secure hash of access token
-    expiresAt: Date
+    userId: string;
+    clientId: string;
+    scopes: string[];
+    tokenHash: string; // Secure hash of access token
+    expiresAt: Date;
     // ... additional context
-  }
+  };
   tokenRefresh?: {
-    refreshToken: string
-    clientId: string
-    authorizationServer: string
-    scopes: string[]
-  }
+    refreshToken: string;
+    clientId: string;
+    authorizationServer: string;
+    scopes: string[];
+  };
 }
 ```
 
@@ -1179,26 +1267,29 @@ Send messages to specific users across all their sessions:
 
 ```typescript
 // In your tool handler
-app.mcpAddTool({
-  name: 'notify-user',
-  description: 'Send notification to user',
-  inputSchema: Type.Object({
-    userId: Type.String(),
-    message: Type.String()
-  })
-}, async (params, { sessionId, authContext }) => {
-  // Send to all sessions for this user
-  await app.mcpSendToUser(params.userId, {
-    jsonrpc: '2.0',
-    method: 'notifications/message',
-    params: {
-      level: 'info',
-      message: params.message
-    }
-  })
-  
-  return { content: [{ type: 'text', text: 'Notification sent' }] }
-})
+app.mcpAddTool(
+  {
+    name: "notify-user",
+    description: "Send notification to user",
+    inputSchema: Type.Object({
+      userId: Type.String(),
+      message: Type.String(),
+    }),
+  },
+  async (params, { sessionId, authContext }) => {
+    // Send to all sessions for this user
+    await app.mcpSendToUser(params.userId, {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: {
+        level: "info",
+        message: params.message,
+      },
+    });
+
+    return { content: [{ type: "text", text: "Notification sent" }] };
+  }
+);
 ```
 
 ### Automatic Token Refresh
@@ -1212,10 +1303,10 @@ authorization: {
   tokenRefresh: {
     // Check for expiring tokens every 5 minutes
     checkIntervalMs: 5 * 60 * 1000,
-    
+
     // Refresh tokens 5 minutes before expiry
     refreshBufferMinutes: 5,
-    
+
     // Maximum refresh attempts
     maxRetries: 3
   }
@@ -1233,36 +1324,41 @@ const success = await app.tokenRefreshService.refreshSessionToken(sessionId)
 Access authorization context in tool handlers:
 
 ```typescript
-app.mcpAddTool({
-  name: 'user-profile',
-  description: 'Get user profile information',
-  inputSchema: Type.Object({})
-}, async (params, { authContext }) => {
-  if (!authContext?.userId) {
-    return {
-      content: [{ type: 'text', text: 'Authentication required' }],
-      isError: true
+app.mcpAddTool(
+  {
+    name: "user-profile",
+    description: "Get user profile information",
+    inputSchema: Type.Object({}),
+  },
+  async (params, { authContext }) => {
+    if (!authContext?.userId) {
+      return {
+        content: [{ type: "text", text: "Authentication required" }],
+        isError: true,
+      };
     }
-  }
-  
-  // Check required scopes
-  if (!authContext.scopes?.includes('profile:read')) {
-    return {
-      content: [{ type: 'text', text: 'Insufficient permissions' }],
-      isError: true
+
+    // Check required scopes
+    if (!authContext.scopes?.includes("profile:read")) {
+      return {
+        content: [{ type: "text", text: "Insufficient permissions" }],
+        isError: true,
+      };
     }
+
+    // Use user context
+    const profile = await getUserProfile(authContext.userId);
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Profile: ${JSON.stringify(profile, null, 2)}`,
+        },
+      ],
+    };
   }
-  
-  // Use user context
-  const profile = await getUserProfile(authContext.userId)
-  
-  return {
-    content: [{
-      type: 'text',
-      text: `Profile: ${JSON.stringify(profile, null, 2)}`
-    }]
-  }
-})
+);
 ```
 
 ### OAuth Routes
@@ -1317,26 +1413,26 @@ authorization: {
 ```typescript
 // Test with valid token
 const response = await app.inject({
-  method: 'POST',
-  url: '/mcp',
+  method: "POST",
+  url: "/mcp",
   headers: {
-    'Authorization': 'Bearer valid-jwt-token',
-    'Content-Type': 'application/json'
+    Authorization: "Bearer valid-jwt-token",
+    "Content-Type": "application/json",
   },
   payload: {
-    jsonrpc: '2.0',
-    method: 'tools/list',
-    id: 1
-  }
-})
+    jsonrpc: "2.0",
+    method: "tools/list",
+    id: 1,
+  },
+});
 
 // Test authorization failure
 const unauthorized = await app.inject({
-  method: 'POST',
-  url: '/mcp',
-  payload: { jsonrpc: '2.0', method: 'tools/list', id: 1 }
-})
-assert.strictEqual(unauthorized.statusCode, 401)
+  method: "POST",
+  url: "/mcp",
+  payload: { jsonrpc: "2.0", method: "tools/list", id: 1 },
+});
+assert.strictEqual(unauthorized.statusCode, 401);
 ```
 
 ## Authentication & Security
@@ -1357,27 +1453,30 @@ The plugin implements comprehensive security measures to protect against common 
 The plugin automatically assesses tool security risks based on annotations:
 
 ```typescript
-app.mcpAddTool({
-  name: 'file-operations',
-  description: 'File system operations',
-  annotations: {
-    destructiveHint: true,  // ⚠️ High risk - logs security warning
-    openWorldHint: false,   // 🔒 Closed world - medium risk
-    readOnlyHint: false     // ✏️ Can modify environment
+app.mcpAddTool(
+  {
+    name: "file-operations",
+    description: "File system operations",
+    annotations: {
+      destructiveHint: true, // ⚠️ High risk - logs security warning
+      openWorldHint: false, // 🔒 Closed world - medium risk
+      readOnlyHint: false, // ✏️ Can modify environment
+    },
+    inputSchema: Type.Object({
+      operation: Type.Union([
+        Type.Literal("read"),
+        Type.Literal("write"),
+        Type.Literal("delete"),
+      ]),
+      path: Type.String({ maxLength: 1000 }),
+    }),
   },
-  inputSchema: Type.Object({
-    operation: Type.Union([
-      Type.Literal('read'),
-      Type.Literal('write'), 
-      Type.Literal('delete')
-    ]),
-    path: Type.String({ maxLength: 1000 })
-  })
-}, async (params) => {
-  // Tool parameters are automatically sanitized and validated
-  // Security warnings are logged for high-risk operations
-  return { content: [{ type: 'text', text: 'Operation completed' }] }
-})
+  async (params) => {
+    // Tool parameters are automatically sanitized and validated
+    // Security warnings are logged for high-risk operations
+    return { content: [{ type: "text", text: "Operation completed" }] };
+  }
+);
 ```
 
 ### Input Validation and Sanitization
@@ -1399,26 +1498,29 @@ All inputs undergo automatic security processing:
 Implement rate limiting for production deployments:
 
 ```typescript
-import { RateLimiter } from '@platformatic/mcp/security'
+import { RateLimiter } from "@platformatic/mcp/security";
 
-const rateLimiter = new RateLimiter(100, 60000) // 100 requests per minute
+const rateLimiter = new RateLimiter(100, 60000); // 100 requests per minute
 
 // Use in tool handlers
-app.mcpAddTool({
-  name: 'rate-limited-tool',
-  description: 'Tool with rate limiting',
-  inputSchema: Type.Object({})
-}, async (params, { sessionId }) => {
-  if (sessionId && !rateLimiter.isAllowed(sessionId)) {
-    return {
-      content: [{ type: 'text', text: 'Rate limit exceeded' }],
-      isError: true
+app.mcpAddTool(
+  {
+    name: "rate-limited-tool",
+    description: "Tool with rate limiting",
+    inputSchema: Type.Object({}),
+  },
+  async (params, { sessionId }) => {
+    if (sessionId && !rateLimiter.isAllowed(sessionId)) {
+      return {
+        content: [{ type: "text", text: "Rate limit exceeded" }],
+        isError: true,
+      };
     }
+
+    // Process request...
+    return { content: [{ type: "text", text: "Success" }] };
   }
-  
-  // Process request...
-  return { content: [{ type: 'text', text: 'Success' }] }
-})
+);
 ```
 
 ### Bearer Token Authentication
@@ -1430,50 +1532,50 @@ npm install @fastify/bearer-auth
 ```
 
 ```typescript
-import Fastify from 'fastify'
-import mcpPlugin from '@platformatic/mcp'
+import Fastify from "fastify";
+import mcpPlugin from "@platformatic/mcp";
 
-const app = Fastify({ logger: true })
+const app = Fastify({ logger: true });
 
 // Register bearer authentication
-await app.register(import('@fastify/bearer-auth'), {
-  keys: new Set(['your-secret-bearer-token']),
+await app.register(import("@fastify/bearer-auth"), {
+  keys: new Set(["your-secret-bearer-token"]),
   auth: {
     // Apply to all routes matching this prefix
     extractToken: (request) => {
-      return request.headers.authorization?.replace('Bearer ', '')
-    }
-  }
-})
+      return request.headers.authorization?.replace("Bearer ", "");
+    },
+  },
+});
 
 // Register MCP plugin (routes will inherit authentication)
 await app.register(mcpPlugin, {
   // ... your configuration
-})
+});
 
 // Usage with authentication
-fetch('/mcp', {
-  method: 'POST',
+fetch("/mcp", {
+  method: "POST",
   headers: {
-    'Authorization': 'Bearer your-secret-bearer-token',
-    'Content-Type': 'application/json',
-    'Accept': 'application/json'
+    Authorization: "Bearer your-secret-bearer-token",
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
-  body: JSON.stringify({ jsonrpc: '2.0', method: 'ping', id: 1 })
-})
+  body: JSON.stringify({ jsonrpc: "2.0", method: "ping", id: 1 }),
+});
 ```
 
 ### Environment-based Token Configuration
 
 ```typescript
-await app.register(import('@fastify/bearer-auth'), {
-  keys: new Set([process.env.MCP_BEARER_TOKEN || 'default-dev-token']),
+await app.register(import("@fastify/bearer-auth"), {
+  keys: new Set([process.env.MCP_BEARER_TOKEN || "default-dev-token"]),
   auth: {
     extractToken: (request) => {
-      return request.headers.authorization?.replace('Bearer ', '')
-    }
-  }
-})
+      return request.headers.authorization?.replace("Bearer ", "");
+    },
+  },
+});
 ```
 
 ## API Reference
@@ -1564,34 +1666,41 @@ app.mcpAddPrompt(
 
 #### HTTP Context Access in Tool Handlers
 
-Tool handlers can access the Fastify request and reply objects through the context parameter, enabling tools to interact with HTTP-specific features like headers, query parameters, and custom response headers. 
+Tool handlers can access the Fastify request and reply objects through the context parameter, enabling tools to interact with HTTP-specific features like headers, query parameters, and custom response headers.
 
 The request and reply objects are now consistently provided across all communication modes (HTTP, SSE, and STDIO), ensuring handlers always have access to HTTP context regardless of how they're invoked.
 
 ```typescript
-app.mcpAddTool({
-  name: 'context-aware-tool',
-  description: 'Tool that uses HTTP context',
-  inputSchema: Type.Object({
-    message: Type.String()
-  })
-}, async (params, context) => {
-  // Access request information
-  const userAgent = context.request.headers['user-agent']
-  const queryParams = context.request.query
-  const requestUrl = context.request.url
-  
-  // Set custom response headers
-  context.reply.header('x-processed-by', 'mcp-tool')
-  context.reply.header('x-request-id', Date.now().toString())
-  
-  return {
-    content: [{
-      type: 'text',
-      text: `Processed "${params.message}" from ${userAgent || 'unknown client'}`
-    }]
+app.mcpAddTool(
+  {
+    name: "context-aware-tool",
+    description: "Tool that uses HTTP context",
+    inputSchema: Type.Object({
+      message: Type.String(),
+    }),
+  },
+  async (params, context) => {
+    // Access request information
+    const userAgent = context.request.headers["user-agent"];
+    const queryParams = context.request.query;
+    const requestUrl = context.request.url;
+
+    // Set custom response headers
+    context.reply.header("x-processed-by", "mcp-tool");
+    context.reply.header("x-request-id", Date.now().toString());
+
+    return {
+      content: [
+        {
+          type: "text",
+          text: `Processed "${params.message}" from ${
+            userAgent || "unknown client"
+          }`,
+        },
+      ],
+    };
   }
-})
+);
 ```
 
 #### Available Context Properties
@@ -1615,22 +1724,28 @@ The context parameter is always provided to handlers. The request and reply obje
 
 ```typescript
 // Existing handler (still works)
-app.mcpAddTool({
-  name: 'legacy-tool',
-  description: 'Works as before',
-  inputSchema: Type.Object({ msg: Type.String() })
-}, async (params) => {
-  return { content: [{ type: 'text', text: params.msg }] }
-})
+app.mcpAddTool(
+  {
+    name: "legacy-tool",
+    description: "Works as before",
+    inputSchema: Type.Object({ msg: Type.String() }),
+  },
+  async (params) => {
+    return { content: [{ type: "text", text: params.msg }] };
+  }
+);
 
 // Handler using only sessionId (still works)
-app.mcpAddTool({
-  name: 'session-tool',
-  description: 'Uses session ID only',
-  inputSchema: Type.Object({})
-}, async (params, { sessionId }) => {
-  return { content: [{ type: 'text', text: `Session: ${sessionId}` }] }
-})
+app.mcpAddTool(
+  {
+    name: "session-tool",
+    description: "Uses session ID only",
+    inputSchema: Type.Object({}),
+  },
+  async (params, { sessionId }) => {
+    return { content: [{ type: "text", text: `Session: ${sessionId}` }] };
+  }
+);
 ```
 
 #### Context Access in Resource and Prompt Handlers
@@ -1639,42 +1754,56 @@ Resource and prompt handlers also receive the same context object as tool handle
 
 ```typescript
 // Resource handler with context
-app.mcpAddResource({
-  name: 'context-aware-resource',
-  description: 'Resource that uses HTTP context',
-  uriPattern: 'context://data/{id}'
-}, async (uri, context) => {
-  // Access request information
-  const userAgent = context.request.headers['user-agent']
-  const authUser = context?.authContext?.userId
-  
-  return {
-    contents: [{
-      uri,
-      text: `Resource ${uri} accessed by ${authUser || 'anonymous'} from ${userAgent || 'unknown client'}`,
-      mimeType: 'text/plain'
-    }]
+app.mcpAddResource(
+  {
+    name: "context-aware-resource",
+    description: "Resource that uses HTTP context",
+    uriPattern: "context://data/{id}",
+  },
+  async (uri, context) => {
+    // Access request information
+    const userAgent = context.request.headers["user-agent"];
+    const authUser = context?.authContext?.userId;
+
+    return {
+      contents: [
+        {
+          uri,
+          text: `Resource ${uri} accessed by ${authUser || "anonymous"} from ${
+            userAgent || "unknown client"
+          }`,
+          mimeType: "text/plain",
+        },
+      ],
+    };
   }
-})
+);
 
 // Prompt handler with context
-app.mcpAddPrompt({
-  name: 'context-aware-prompt',
-  description: 'Prompt that uses HTTP context'
-}, async (name, args, context) => {
-  const sessionId = context?.sessionId
-  const userId = context?.authContext?.userId
-  
-  return {
-    messages: [{
-      role: 'user',
-      content: {
-        type: 'text',
-        text: `Prompt ${name} for user ${userId || 'anonymous'} in session ${sessionId || 'none'}`
-      }
-    }]
+app.mcpAddPrompt(
+  {
+    name: "context-aware-prompt",
+    description: "Prompt that uses HTTP context",
+  },
+  async (name, args, context) => {
+    const sessionId = context?.sessionId;
+    const userId = context?.authContext?.userId;
+
+    return {
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text: `Prompt ${name} for user ${
+              userId || "anonymous"
+            } in session ${sessionId || "none"}`,
+          },
+        },
+      ],
+    };
   }
-})
+);
 ```
 
 ### Messaging Functions
@@ -1696,21 +1825,32 @@ All MCP handlers follow a consistent pattern where the context parameter is alwa
 ```typescript
 // HandlerContext interface (available to all handlers)
 interface HandlerContext {
-  sessionId?: string              // Session identifier (SSE mode)
-  request: FastifyRequest         // HTTP request object
-  reply: FastifyReply            // HTTP reply object
-  authContext?: AuthorizationContext  // OAuth authorization data
+  sessionId?: string; // Session identifier (SSE mode)
+  request: FastifyRequest; // HTTP request object
+  reply: FastifyReply; // HTTP reply object
+  authContext?: AuthorizationContext; // OAuth authorization data
 }
 
 // Normalized handler signatures
-type ToolHandler = (params: any, context: HandlerContext) => Promise<CallToolResult>
-type ResourceHandler = (uri: string, context: HandlerContext) => Promise<ReadResourceResult>
-type PromptHandler = (name: string, args: any, context: HandlerContext) => Promise<GetPromptResult>
+type ToolHandler = (
+  params: any,
+  context: HandlerContext
+) => Promise<CallToolResult>;
+type ResourceHandler = (
+  uri: string,
+  context: HandlerContext
+) => Promise<ReadResourceResult>;
+type PromptHandler = (
+  name: string,
+  args: any,
+  context: HandlerContext
+) => Promise<GetPromptResult>;
 ```
 
 **Handler Invocation Summary:**
+
 - **Tool handlers**: Receive validated, typed arguments and return `CallToolResult`
-- **Resource handlers**: Receive validated URIs and return `ReadResourceResult`  
+- **Resource handlers**: Receive validated URIs and return `ReadResourceResult`
 - **Prompt handlers**: Receive the prompt name and validated arguments, return `GetPromptResult`
 - **All handlers**: Optionally receive `HandlerContext` with session, HTTP, and auth information
 
@@ -1768,7 +1908,7 @@ This section outlines security considerations and best practices when using the 
 **🚨 CRITICAL:** Tool annotations (such as `destructiveHint`, `openWorldHint`, etc.) are **hints from potentially untrusted servers** and should **NEVER** be used for security decisions.
 
 - Annotations can be provided by untrusted MCP servers
-- They are not guaranteed to accurately describe tool behavior  
+- They are not guaranteed to accurately describe tool behavior
 - Always implement your own security validation regardless of annotations
 - Use annotations only for UI/UX improvements, not security controls
 
@@ -1800,25 +1940,28 @@ All inputs are validated against TypeBox schemas:
 
 ```typescript
 // Example: Secure tool definition
-app.mcpAddTool({
-  name: 'secure-tool',
-  description: 'A tool with proper validation',
-  inputSchema: Type.Object({
-    message: Type.String({ 
-      minLength: 1, 
-      maxLength: 1000,
-      description: 'User message'
+app.mcpAddTool(
+  {
+    name: "secure-tool",
+    description: "A tool with proper validation",
+    inputSchema: Type.Object({
+      message: Type.String({
+        minLength: 1,
+        maxLength: 1000,
+        description: "User message",
+      }),
+      priority: Type.Union([
+        Type.Literal("low"),
+        Type.Literal("medium"),
+        Type.Literal("high"),
+      ]),
     }),
-    priority: Type.Union([
-      Type.Literal('low'),
-      Type.Literal('medium'), 
-      Type.Literal('high')
-    ])
-  })
-}, async (params) => {
-  // params are automatically validated and sanitized
-  return { content: [{ type: 'text', text: 'OK' }] }
-})
+  },
+  async (params) => {
+    // params are automatically validated and sanitized
+    return { content: [{ type: "text", text: "OK" }] };
+  }
+);
 ```
 
 ### Tool Security Assessment
@@ -1837,17 +1980,20 @@ The following warnings are logged for different tool types:
 
 ```typescript
 // High-risk tool example
-app.mcpAddTool({
-  name: 'file-delete',
-  description: 'Delete files',
-  annotations: {
-    destructiveHint: true,  // ⚠️ Triggers high-risk warning
-    openWorldHint: false
+app.mcpAddTool(
+  {
+    name: "file-delete",
+    description: "Delete files",
+    annotations: {
+      destructiveHint: true, // ⚠️ Triggers high-risk warning
+      openWorldHint: false,
+    },
+    inputSchema: Type.Object({
+      path: Type.String(),
+    }),
   },
-  inputSchema: Type.Object({
-    path: Type.String()
-  })
-}, handler)
+  handler
+);
 ```
 
 ### Rate Limiting
@@ -1855,13 +2001,13 @@ app.mcpAddTool({
 Implement rate limiting to prevent abuse:
 
 ```typescript
-import { RateLimiter } from '@platformatic/mcp/security'
+import { RateLimiter } from "@platformatic/mcp/security";
 
-const rateLimiter = new RateLimiter(100, 60000) // 100 requests per minute
+const rateLimiter = new RateLimiter(100, 60000); // 100 requests per minute
 
 // Check before processing requests
 if (!rateLimiter.isAllowed(sessionId)) {
-  throw new Error('Rate limit exceeded')
+  throw new Error("Rate limit exceeded");
 }
 ```
 
@@ -1875,16 +2021,16 @@ When using Redis for horizontal scaling:
 await app.register(mcpPlugin, {
   enableSSE: true,
   redis: {
-    host: 'your-redis-host',
+    host: "your-redis-host",
     port: 6379,
     password: process.env.REDIS_PASSWORD, // Always use authentication
     db: 0,
     // Enable TLS for production
     tls: {
-      rejectUnauthorized: true
-    }
-  }
-})
+      rejectUnauthorized: true,
+    },
+  },
+});
 ```
 
 #### Redis Best Practices
@@ -1937,12 +2083,15 @@ const redis = { password: 'hardcoded-password' }
 
 ```typescript
 // Example: Secure logging
-app.log.info({
-  tool: toolName,
-  sessionId,
-  // ❌ Never log sensitive parameters
-  // params: toolParams
-}, 'Tool executed successfully')
+app.log.info(
+  {
+    tool: toolName,
+    sessionId,
+    // ❌ Never log sensitive parameters
+    // params: toolParams
+  },
+  "Tool executed successfully"
+);
 ```
 
 ### Transport Security
@@ -1954,10 +2103,10 @@ app.log.info({
 ```typescript
 const app = fastify({
   https: {
-    key: fs.readFileSync('path/to/key.pem'),
-    cert: fs.readFileSync('path/to/cert.pem')
-  }
-})
+    key: fs.readFileSync("path/to/key.pem"),
+    cert: fs.readFileSync("path/to/cert.pem"),
+  },
+});
 ```
 
 ### Error Handling Security
@@ -1968,10 +2117,14 @@ Prevent information leakage in error messages:
 
 ```typescript
 // ✅ Good: Generic error messages
-return createError(request.id, INVALID_PARAMS, 'Invalid parameters')
+return createError(request.id, INVALID_PARAMS, "Invalid parameters");
 
 // ❌ Bad: Detailed error messages
-return createError(request.id, INVALID_PARAMS, `SQL injection attempt detected: ${details}`)
+return createError(
+  request.id,
+  INVALID_PARAMS,
+  `SQL injection attempt detected: ${details}`
+);
 ```
 
 #### Error Logging
@@ -1983,10 +2136,13 @@ try {
   // risky operation
 } catch (error) {
   // Log detailed error for debugging
-  app.log.error({ error, sessionId, toolName }, 'Tool execution failed')
-  
+  app.log.error({ error, sessionId, toolName }, "Tool execution failed");
+
   // Return generic error to client
-  return { content: [{ type: 'text', text: 'Operation failed' }], isError: true }
+  return {
+    content: [{ type: "text", text: "Operation failed" }],
+    isError: true,
+  };
 }
 ```
 
@@ -1998,7 +2154,7 @@ Monitor these security-related metrics:
 
 - Failed validation attempts per session
 - Rate limit violations
-- High-risk tool executions  
+- High-risk tool executions
 - Unusual session patterns
 - Redis connection failures
 
@@ -2042,17 +2198,20 @@ Remember: Security is a layered approach. No single measure provides complete pr
 This version introduces elicitation support and enhanced security features:
 
 **New Features:**
+
 - Elicitation capability for server-to-client information requests
 - Enhanced input sanitization and validation
 - Automatic security assessment for tool annotations
 - Built-in rate limiting utilities
 
 **Breaking Changes:**
+
 - Protocol version updated to `2025-06-18`
 - Enhanced validation may reject previously accepted inputs
 - Security logging may produce additional log entries
 
 **Migration Steps:**
+
 1. Update client applications to support MCP 2025-06-18
 2. Add elicitation capability if needed: `capabilities: { elicitation: {} }`
 3. Review security logs for any validation warnings

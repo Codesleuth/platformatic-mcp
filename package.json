@@ -1,5 +1,5 @@
 {
-  "name": "@platformatic/mcp",
+  "name": "@codesleuth/platformatic-mcp",
   "version": "1.2.2",
   "description": "Scalable Fastify adapter for the Model Context Protocol (MCP)",
   "main": "dist/index.js",
